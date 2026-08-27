@@ -29,7 +29,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/actuator/info", "/version", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        .requestMatchers("/auth/activation").permitAll()
+                        .requestMatchers("/auth/activation", "/auth/login").permitAll()
                         .requestMatchers("/internal/**").permitAll()
                         .anyRequest().denyAll())
                 .addFilterBefore(internalRequestFilter, UsernamePasswordAuthenticationFilter.class)
