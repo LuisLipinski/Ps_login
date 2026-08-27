@@ -26,6 +26,16 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.BAD_REQUEST, "INVALID_ACTIVATION_TOKEN", ex.getMessage());
     }
 
+    @ExceptionHandler(InvalidPasswordResetTokenException.class)
+    ResponseEntity<ErrorResponse> invalidPasswordResetToken(InvalidPasswordResetTokenException ex) {
+        return response(HttpStatus.BAD_REQUEST, "INVALID_PASSWORD_RESET_TOKEN", ex.getMessage());
+    }
+
+    @ExceptionHandler(CurrentPasswordInvalidException.class)
+    ResponseEntity<ErrorResponse> currentPasswordInvalid(CurrentPasswordInvalidException ex) {
+        return response(HttpStatus.BAD_REQUEST, "INVALID_CURRENT_PASSWORD", ex.getMessage());
+    }
+
     @ExceptionHandler(PasswordPolicyException.class)
     ResponseEntity<ErrorResponse> passwordPolicy(PasswordPolicyException ex) {
         return response(HttpStatus.BAD_REQUEST, "INVALID_PASSWORD", ex.getMessage());
