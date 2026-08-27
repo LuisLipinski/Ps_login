@@ -7,8 +7,14 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.crypto.password.Pbkdf2PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import java.time.Clock;
+import java.util.Map;
 
 @Configuration
 public class SecurityConfig {
@@ -23,11 +29,23 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/actuator/info", "/version", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                        .requestMatchers("/auth/activation").permitAll()
                         .requestMatchers("/internal/**").permitAll()
                         .anyRequest().denyAll())
                 .addFilterBefore(internalRequestFilter, UsernamePasswordAuthenticationFilter.class)
                 .cors(Customizer.withDefaults());
 
         return http.build();
+    }
+
+    @Bean
+    PasswordEncoder passwordEncoder() {
+        String id = "pbkdf2@SpringSecurity_v5_8";
+        return new DelegatingPasswordEncoder(id, Map.of(id, Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8()));
+    }
+
+    @Bean
+    Clock clock() {
+        return Clock.systemUTC();
     }
 }
