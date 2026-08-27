@@ -11,6 +11,11 @@ import java.time.Instant;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(InvalidCredentialsException.class)
+    ResponseEntity<ErrorResponse> invalidCredentials(InvalidCredentialsException ex) {
+        return response(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", ex.getMessage());
+    }
+
     @ExceptionHandler(ActivationTokenInvalidException.class)
     ResponseEntity<ErrorResponse> invalidToken(ActivationTokenInvalidException ex) {
         return response(HttpStatus.BAD_REQUEST, "INVALID_ACTIVATION_TOKEN", ex.getMessage());
