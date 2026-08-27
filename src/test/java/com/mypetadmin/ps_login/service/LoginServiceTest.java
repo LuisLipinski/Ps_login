@@ -9,6 +9,7 @@ import com.mypetadmin.ps_login.exception.InvalidCredentialsException;
 import com.mypetadmin.ps_login.exception.PsUserIntegrationException;
 import com.mypetadmin.ps_login.repository.LoginCredentialRepository;
 import com.mypetadmin.ps_login.security.IssuedAccessToken;
+import com.mypetadmin.ps_login.security.IssuedRefreshToken;
 import com.mypetadmin.ps_login.security.JwtTokenService;
 import feign.FeignException;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,6 +35,7 @@ class LoginServiceTest {
     private LoginCredentialRepository credentialRepository;
     private PasswordEncoder passwordEncoder;
     private JwtTokenService jwtTokenService;
+    private SessionService sessionService;
     private LoginService service;
     private UUID userId;
     private UUID empresaId;
@@ -44,33 +46,36 @@ class LoginServiceTest {
         credentialRepository = mock(LoginCredentialRepository.class);
         passwordEncoder = mock(PasswordEncoder.class);
         jwtTokenService = mock(JwtTokenService.class);
+        sessionService = mock(SessionService.class);
         when(passwordEncoder.encode(anyString())).thenReturn("dummy-hash");
-        service = new LoginService(psUserClient, credentialRepository, passwordEncoder, jwtTokenService);
+        service = new LoginService(psUserClient, credentialRepository, passwordEncoder, jwtTokenService, sessionService);
         userId = UUID.randomUUID();
         empresaId = UUID.randomUUID();
     }
 
     @Test
-    void autenticaCredencialAtivaEEmiteToken() {
+    void autenticaCredencialAtivaEEmiteAccessERefresh() {
         var identity = identity("ATIVO");
         LoginCredential credential = activeCredential();
         when(psUserClient.buscarIdentidade("user@example.com")).thenReturn(identity);
         when(credentialRepository.findByUserId(userId)).thenReturn(Optional.of(credential));
         when(passwordEncoder.matches("senha-correta", credential.getPasswordHash())).thenReturn(true);
         when(jwtTokenService.issue(identity)).thenReturn(new IssuedAccessToken("jwt-token", 900));
+        when(sessionService.issue(credential)).thenReturn(new IssuedRefreshToken("refresh-token", 2_592_000));
 
         var response = service.login(new LoginRequest(" USER@EXAMPLE.COM ", "senha-correta"));
 
         assertThat(response.accessToken()).isEqualTo("jwt-token");
+        assertThat(response.refreshToken()).isEqualTo("refresh-token");
         assertThat(response.tokenType()).isEqualTo("Bearer");
         assertThat(response.expiresIn()).isEqualTo(900);
+        assertThat(response.refreshExpiresIn()).isEqualTo(2_592_000);
     }
 
     @Test
     void rejeitaUsuarioInativoSemEmitirToken() {
         when(psUserClient.buscarIdentidade("user@example.com")).thenReturn(identity("INATIVO"));
         when(passwordEncoder.matches("senha", "dummy-hash")).thenReturn(false);
-
         assertThatThrownBy(() -> service.login(new LoginRequest("user@example.com", "senha")))
                 .isInstanceOf(InvalidCredentialsException.class);
         verify(jwtTokenService, never()).issue(org.mockito.ArgumentMatchers.any());
@@ -81,7 +86,6 @@ class LoginServiceTest {
         when(psUserClient.buscarIdentidade("user@example.com")).thenReturn(identity("ATIVO"));
         when(credentialRepository.findByUserId(userId)).thenReturn(Optional.empty());
         when(passwordEncoder.matches("senha", "dummy-hash")).thenReturn(false);
-
         assertThatThrownBy(() -> service.login(new LoginRequest("user@example.com", "senha")))
                 .isInstanceOf(InvalidCredentialsException.class);
     }
@@ -92,7 +96,6 @@ class LoginServiceTest {
         when(psUserClient.buscarIdentidade("user@example.com")).thenReturn(identity("ATIVO"));
         when(credentialRepository.findByUserId(userId)).thenReturn(Optional.of(credential));
         when(passwordEncoder.matches("senha", "dummy-hash")).thenReturn(false);
-
         assertThatThrownBy(() -> service.login(new LoginRequest("user@example.com", "senha")))
                 .isInstanceOf(InvalidCredentialsException.class);
     }
@@ -103,7 +106,6 @@ class LoginServiceTest {
         when(psUserClient.buscarIdentidade("user@example.com")).thenReturn(identity("ATIVO"));
         when(credentialRepository.findByUserId(userId)).thenReturn(Optional.of(credential));
         when(passwordEncoder.matches("senha-errada", credential.getPasswordHash())).thenReturn(false);
-
         assertThatThrownBy(() -> service.login(new LoginRequest("user@example.com", "senha-errada")))
                 .isInstanceOf(InvalidCredentialsException.class);
     }
@@ -114,7 +116,6 @@ class LoginServiceTest {
         when(exception.status()).thenReturn(404);
         when(psUserClient.buscarIdentidade("missing@example.com")).thenThrow(exception);
         when(passwordEncoder.matches("senha", "dummy-hash")).thenReturn(false);
-
         assertThatThrownBy(() -> service.login(new LoginRequest("missing@example.com", "senha")))
                 .isInstanceOf(InvalidCredentialsException.class);
     }
@@ -124,7 +125,6 @@ class LoginServiceTest {
         FeignException exception = mock(FeignException.class);
         when(exception.status()).thenReturn(503);
         when(psUserClient.buscarIdentidade("user@example.com")).thenThrow(exception);
-
         assertThatThrownBy(() -> service.login(new LoginRequest("user@example.com", "senha")))
                 .isInstanceOf(PsUserIntegrationException.class);
     }
