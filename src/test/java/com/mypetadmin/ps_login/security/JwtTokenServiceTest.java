@@ -12,6 +12,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.Set;
 import java.util.UUID;
@@ -26,7 +27,7 @@ class JwtTokenServiceTest {
     void emiteJwtComClaimsDeTenantERoles() {
         SecretKey key = new SecretKeySpec(Base64.getDecoder().decode(BASE64_SECRET), "HmacSHA256");
         var encoder = NimbusJwtEncoder.withSecretKey(key).algorithm(MacAlgorithm.HS256).build();
-        Instant now = Instant.parse("2026-08-27T20:00:00Z");
+        Instant now = Instant.now().minusSeconds(1).truncatedTo(ChronoUnit.SECONDS);
         JwtTokenService service = new JwtTokenService(encoder, Clock.fixed(now, ZoneOffset.UTC), "ps-login", Duration.ofMinutes(15));
         UUID userId = UUID.randomUUID();
         UUID empresaId = UUID.randomUUID();
