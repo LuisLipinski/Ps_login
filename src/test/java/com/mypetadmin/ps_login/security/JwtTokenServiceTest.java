@@ -40,7 +40,7 @@ class JwtTokenServiceTest {
         assertThat(jwt.getSubject()).isEqualTo(userId.toString());
         assertThat(jwt.getClaimAsString("empresaId")).isEqualTo(empresaId.toString());
         assertThat(jwt.getClaimAsStringList("roles")).containsExactlyInAnyOrder("MASTER", "LOJA");
-        assertThat(jwt.getIssuer().toString()).isEqualTo("ps-login");
+        assertThat(jwt.getClaimAsString("iss")).isEqualTo("ps-login");
         assertThat(jwt.getIssuedAt()).isEqualTo(now);
         assertThat(jwt.getExpiresAt()).isEqualTo(now.plusSeconds(900));
         assertThat(issued.expiresInSeconds()).isEqualTo(900);
