@@ -2,100 +2,66 @@
 
 Microsserviço responsável exclusivamente por **credenciais e autenticação** do My Pet Admin.
 
-## Ownership
-
-### PS_Login
-- credencial e password hash;
-- autenticação;
-- emissão de JWT;
-- convite de ativação e tokens temporários;
-- refresh/revogação quando o modelo de sessão for definido;
-- alteração e recuperação de senha.
-
-### Fora do PS_Login
-Dados cadastrais, `empresaId`, status e roles pertencem ao **PS_User**.
-
 ## Plataforma
-- Java 25 LTS;
-- Spring Boot 4.1.1;
-- Spring Cloud 2025.1.3;
-- PostgreSQL;
-- Flyway;
-- Spring Security;
-- Spring Security JOSE/JWT;
-- OpenFeign;
-- SMTP via Spring Mail;
-- Swagger/OpenAPI;
-- JaCoCo.
+- Java 25 LTS
+- Spring Boot 4.1.1
+- Spring Cloud 2025.1.3
+- PostgreSQL + Flyway
+- Spring Security / JOSE JWT
+- OpenFeign
+- Spring Mail
+- Swagger/OpenAPI
+- JaCoCo
 
-## Integração PS_User
-O serviço consome `GET /internal/usuarios/identity?email={email}` com `X-Internal-Key` para validar identidade, status e roles.
+## Ownership
+PS_Login é dono de credenciais, autenticação, access/refresh tokens, sessão, logout e fluxos de senha. Dados cadastrais, `empresaId`, status e roles permanecem no PS_User.
 
-## Fluxo de ativação
-1. PS_User cria identidade sem senha.
-2. Orquestração chama `POST /internal/auth/invitations`.
-3. PS_Login valida a identidade no PS_User.
-4. Gera token seguro e persiste somente SHA-256.
-5. Usuário recebe link por e-mail e define a própria senha em `POST /auth/activation`.
-6. Password hash fica exclusivamente no PS_Login.
+## Ativação
+- `POST /internal/auth/invitations`
+- `POST /auth/activation`
+
+Usuário recebe convite, define a própria senha e nenhum token de ativação é persistido em texto puro.
 
 ## Login
-Endpoint: `POST /auth/login`.
+`POST /auth/login`
 
-Fluxo:
-1. recebe e-mail + senha;
-2. consulta identidade no PS_User;
-3. exige usuário `ATIVO`;
-4. exige credencial local `ACTIVE`;
-5. valida password hash;
-6. emite access token JWT curto.
+Retorna:
+- `accessToken`
+- `tokenType=Bearer`
+- `expiresIn`
+- `refreshToken`
+- `refreshExpiresIn`
 
-Falha de usuário inexistente, usuário inativo, credencial pendente ou senha incorreta responde de forma neutra como credenciais inválidas.
+Usuário precisa estar `ATIVO` no PS_User e a credencial precisa estar `ACTIVE` no PS_Login.
 
-## JWT atual
-Nesta fase, para compatibilidade com a validação já existente do PS_Empresa, o access token usa HS256.
+## JWT
+HS256 temporário para compatibilidade com o PS_Empresa atual.
+Claims: `sub=userId`, `empresaId`, `roles`, `iss`, `iat`, `exp`, `jti`.
 
-Claims:
-- `sub = userId`;
-- `empresaId`;
-- `roles`;
-- `iss`;
-- `iat`;
-- `exp`;
-- `jti`.
+`JWT_SECRET_KEY` deve ser Base64 de pelo menos 32 bytes aleatórios. Com Gateway, a direção é migrar para assinatura assimétrica/JWKS.
 
-`JWT_SECRET_KEY` deve ser **Base64 de pelo menos 32 bytes aleatórios** e precisa ser o mesmo no PS_Login e nos serviços que ainda validam HS256 diretamente. Esta compatibilidade é transitória: quando o API Gateway centralizar autenticação, a direção é migrar assinatura para chave assimétrica/JWKS e parar de compartilhar segredo de assinatura entre serviços.
+## Refresh token e sessão
+- `POST /auth/refresh` rotaciona o refresh token a cada uso;
+- refresh token é opaco e criptograficamente aleatório;
+- somente SHA-256 é persistido;
+- refresh token pertence a uma `family_id`;
+- reutilização de token já consumido revoga toda a família, mitigando replay;
+- consulta de refresh revalida o usuário atual no PS_User antes de emitir novo access token;
+- status/roles não são reaproveitados cegamente do access token anterior;
+- lookup do refresh usa lock pessimista para serializar rotações concorrentes;
+- `POST /auth/logout` revoga a família e é idempotente.
 
-TTL do access token: `JWT_ACCESS_TTL`, default técnico `PT15M`.
-
-## Política de senha
-O backend valida confirmação e tamanho. O mínimo é parametrizado por `PASSWORD_MIN_LENGTH` (default técnico atual: 12) e não representa decisão definitiva de produto.
-
-## Endpoints atuais
-- `POST /internal/auth/invitations` — protegido por `X-Internal-Key`;
-- `POST /auth/activation` — público com token de uso único;
-- `POST /auth/login` — público;
-- `GET /version`;
-- `/actuator/health` e `/actuator/info`.
-
-## Segurança
-- stateless;
-- `httpBasic`, `formLogin` e logout padrão desabilitados;
-- `/internal/**` protegido por chave interna;
-- token de ativação não é persistido em texto puro nem logado;
-- respostas de autenticação inválida não revelam existência/status do usuário;
-- comparação de senha usa `PasswordEncoder`;
-- rate limiting permanece requisito do Gateway, com possibilidade de defesa complementar local.
+TTL técnico do refresh: `JWT_REFRESH_TTL`, default `P30D`. É configurável e não representa decisão definitiva de produto.
 
 ## Banco
 Banco lógico recomendado: `ps_login_db`.
 
-Migration V1:
-- `login_credentials`;
-- `activation_tokens`.
+Migrations:
+- V1: credenciais + tokens de ativação;
+- V2: refresh tokens e famílias de sessão.
 
 ## Produção / Render
-Variáveis esperadas:
+Variáveis:
 - `SPRING_PROFILES_ACTIVE=prod`
 - `DB_URL`
 - `DB_USERNAME`
@@ -103,22 +69,16 @@ Variáveis esperadas:
 - `PS_USER_URL`
 - `INTERNAL_API_KEY`
 - `JWT_SECRET_KEY`
-- `JWT_ISSUER` (opcional, default `ps-login`)
-- `JWT_ACCESS_TTL` (opcional, default `PT15M`)
+- `JWT_ISSUER` opcional
+- `JWT_ACCESS_TTL` opcional, default `PT15M`
+- `JWT_REFRESH_TTL` opcional, default `P30D`
 - `ACTIVATION_URL`
-- `ACTIVATION_TOKEN_TTL` (opcional, default `PT24H`)
-- `PASSWORD_MIN_LENGTH` (opcional, default técnico `12`)
-- `MAIL_HOST`
-- `MAIL_PORT`
-- `MAIL_USERNAME`
-- `MAIL_PASSWORD`
-- `MAIL_FROM`
-
-`PORT` é fornecido pelo Render e possui fallback `8084`.
+- `ACTIVATION_TOKEN_TTL` opcional
+- `PASSWORD_MIN_LENGTH` opcional
+- `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`
 
 ## Próximos incrementos
-- refresh token com rotação/revogação;
-- logout/revogação de sessão;
 - troca autenticada de senha;
 - recuperação/reset de senha;
-- integração futura com API Gateway e migração para assinatura assimétrica.
+- integração/deploy com banco Neon e Render;
+- API Gateway + migração futura para JWT assimétrico.

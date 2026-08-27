@@ -16,6 +16,11 @@ public class GlobalExceptionHandler {
         return response(HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", ex.getMessage());
     }
 
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    ResponseEntity<ErrorResponse> invalidRefresh(InvalidRefreshTokenException ex) {
+        return response(HttpStatus.UNAUTHORIZED, "INVALID_SESSION", ex.getMessage());
+    }
+
     @ExceptionHandler(ActivationTokenInvalidException.class)
     ResponseEntity<ErrorResponse> invalidToken(ActivationTokenInvalidException ex) {
         return response(HttpStatus.BAD_REQUEST, "INVALID_ACTIVATION_TOKEN", ex.getMessage());

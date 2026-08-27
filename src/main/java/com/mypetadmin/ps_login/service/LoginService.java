@@ -10,6 +10,7 @@ import com.mypetadmin.ps_login.exception.InvalidCredentialsException;
 import com.mypetadmin.ps_login.exception.PsUserIntegrationException;
 import com.mypetadmin.ps_login.repository.LoginCredentialRepository;
 import com.mypetadmin.ps_login.security.IssuedAccessToken;
+import com.mypetadmin.ps_login.security.IssuedRefreshToken;
 import com.mypetadmin.ps_login.security.JwtTokenService;
 import feign.FeignException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -28,21 +29,24 @@ public class LoginService {
     private final LoginCredentialRepository credentialRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenService jwtTokenService;
+    private final SessionService sessionService;
     private final String dummyPasswordHash;
 
     public LoginService(
             PsUserClient psUserClient,
             LoginCredentialRepository credentialRepository,
             PasswordEncoder passwordEncoder,
-            JwtTokenService jwtTokenService) {
+            JwtTokenService jwtTokenService,
+            SessionService sessionService) {
         this.psUserClient = psUserClient;
         this.credentialRepository = credentialRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenService = jwtTokenService;
+        this.sessionService = sessionService;
         this.dummyPasswordHash = passwordEncoder.encode("mypetadmin-dummy-password-never-valid");
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public LoginResponse login(LoginRequest request) {
         String email = request.email().trim().toLowerCase(Locale.ROOT);
         UsuarioIdentityResponseDTO identity = loadIdentity(email, request.password());
@@ -62,8 +66,14 @@ public class LoginService {
             throw new InvalidCredentialsException();
         }
 
-        IssuedAccessToken token = jwtTokenService.issue(identity);
-        return new LoginResponse(token.tokenValue(), "Bearer", token.expiresInSeconds());
+        IssuedAccessToken access = jwtTokenService.issue(identity);
+        IssuedRefreshToken refresh = sessionService.issue(credential.get());
+        return new LoginResponse(
+                access.tokenValue(),
+                "Bearer",
+                access.expiresInSeconds(),
+                refresh.tokenValue(),
+                refresh.expiresInSeconds());
     }
 
     private UsuarioIdentityResponseDTO loadIdentity(String email, String rawPassword) {
