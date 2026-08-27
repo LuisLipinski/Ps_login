@@ -30,8 +30,11 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/actuator/info", "/version", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/auth/activation", "/auth/login", "/auth/refresh", "/auth/logout").permitAll()
+                        .requestMatchers("/auth/password/forgot", "/auth/password/reset").permitAll()
+                        .requestMatchers("/auth/password/change").authenticated()
                         .requestMatchers("/internal/**").permitAll()
                         .anyRequest().denyAll())
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()))
                 .addFilterBefore(internalRequestFilter, UsernamePasswordAuthenticationFilter.class)
                 .cors(Customizer.withDefaults());
 

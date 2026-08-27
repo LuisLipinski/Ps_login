@@ -53,6 +53,11 @@ public class LoginCredential {
         this.passwordUpdatedAt = now;
     }
 
+    public void updatePassword(String passwordHash, Instant now) {
+        this.passwordHash = passwordHash;
+        this.passwordUpdatedAt = now;
+    }
+
     public UUID getId() { return id; }
     public UUID getUserId() { return userId; }
     public String getPasswordHash() { return passwordHash; }

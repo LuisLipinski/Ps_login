@@ -103,6 +103,13 @@ public class SessionService {
                 .ifPresent(token -> revokeFamily(token.getFamilyId(), clock.instant()));
     }
 
+    @Transactional
+    public void revokeAllForCredential(UUID credentialId) {
+        Instant now = clock.instant();
+        refreshTokenRepository.findAllByCredentialIdAndRevokedAtIsNull(credentialId)
+                .forEach(token -> token.revoke(now));
+    }
+
     private IssuedRefreshToken createToken(UUID credentialId, UUID familyId, Instant now) {
         String rawToken = tokenCodec.generate();
         RefreshToken token = new RefreshToken(
