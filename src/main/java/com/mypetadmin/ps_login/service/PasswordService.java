@@ -75,9 +75,10 @@ public class PasswordService {
         final UsuarioIdentityResponseDTO identity;
         try {
             identity = psUserClient.buscarIdentidade(email);
-        } catch (FeignException.NotFound ex) {
-            return;
         } catch (FeignException ex) {
+            if (ex.status() == 404) {
+                return;
+            }
             throw new PsUserIntegrationException();
         }
 
