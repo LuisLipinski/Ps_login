@@ -8,6 +8,10 @@ import java.util.UUID;
 
 public record InvitationRequest(
         @NotNull UUID userId,
-        @NotBlank @Email String email
+        @NotBlank @Email String email,
+        UUID requestId
 ) {
+    public InvitationRequest(UUID userId, String email) {
+        this(userId, email, null);
+    }
 }
