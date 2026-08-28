@@ -148,9 +148,10 @@ Banco lógico de produção esperado: `Ps_login_db`.
 Migrations:
 - V1: `login_credentials` + `activation_tokens`;
 - V2: `refresh_tokens` e famílias de sessão;
-- V3: `password_reset_tokens`.
+- V3: `password_reset_tokens`;
+- V4: alinha os tipos dos hashes SHA-256 de ativação, refresh e reset ao mapeamento Hibernate 7, preservando compatibilidade para bancos que já tenham recebido V1–V3.
 
-Todas as migrations são validadas pelo CI em PostgreSQL 17.
+Todas as migrations são validadas pelo CI em PostgreSQL 17 e o startup cross-service executa com `ddl-auto=validate`.
 
 ## Produção / Render
 
@@ -180,6 +181,12 @@ Variáveis opcionais/com default técnico:
 
 `PORT` não precisa ser definido manualmente no Render; a plataforma injeta o valor.
 
+### Health e SMTP
+
+`/actuator/health` não depende do `MailHealthIndicator` (`management.health.mail.enabled=false`). A indisponibilidade do SMTP não deve tirar login/refresh/logout do ar nem provocar restart do serviço inteiro.
+
+Falhas de envio continuam sendo falhas funcionais dos fluxos de convite/reset e devem ser observadas por logs/métricas. O SMTP real ainda é obrigatório para esses fluxos em produção.
+
 ## Quality gates
 
 O pipeline `.github/workflows/ci.yml` valida:
@@ -189,6 +196,7 @@ O pipeline `.github/workflows/ci.yml` valida:
 - todas as migrations Flyway `V*.sql` em PostgreSQL 17;
 - Docker build;
 - integração efêmera PS_Login ↔ PS_User usando PostgreSQL real;
+- startup dos dois serviços com Flyway + Hibernate `ddl-auto=validate`;
 - contrato interno de identidade;
 - login real por e-mail/senha;
 - claims `sub`, `empresaId` e `roles` do JWT;
