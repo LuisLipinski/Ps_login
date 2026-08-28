@@ -62,3 +62,238 @@ jobs:
       - uses: actions/checkout@v5
       - name: Build container
         run: docker build -t ps-login:test .
+
+  user-login-integration:
+    needs: [unit-tests, migration-postgres, docker-build]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PGPASSWORD: postgres
+      INTERNAL_API_KEY: integration-internal-key
+      USER_ID: 11111111-1111-1111-1111-111111111111
+      EMPRESA_ID: 22222222-2222-2222-2222-222222222222
+      USER_EMAIL: master.integration@mypetadmin.test
+      USER_PASSWORD: IntegrationPass123!
+      JWT_SECRET_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+    steps:
+      - name: Checkout PS_Login
+        uses: actions/checkout@v5
+
+      - name: Checkout PS_User master
+        uses: actions/checkout@v5
+        with:
+          repository: LuisLipinski/ps_user-login
+          ref: master
+          path: ps-user
+
+      - name: Setup Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Install integration dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client apache2-utils jq
+
+      - name: Prepare PostgreSQL databases
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE ps_user_it;'
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE ps_login_it;'
+
+      - name: Build PS_User and PS_Login
+        run: |
+          set -euo pipefail
+          mvn -B -DskipTests package
+          (cd ps-user && mvn -B -DskipTests package)
+
+      - name: Start PS_User
+        run: |
+          SPRING_PROFILES_ACTIVE=prod \
+          PORT=8083 \
+          DB_URL=jdbc:postgresql://localhost:5432/ps_user_it \
+          DB_USERNAME=postgres \
+          DB_PASSWORD=postgres \
+          PS_EMPRESA_URL=http://127.0.0.1:65535 \
+          INTERNAL_API_KEY="$INTERNAL_API_KEY" \
+          nohup java -jar ps-user/target/*.jar > ps-user.log 2>&1 &
+          echo $! > ps-user.pid
+
+      - name: Start PS_Login
+        run: |
+          SPRING_PROFILES_ACTIVE=prod \
+          PORT=8084 \
+          DB_URL=jdbc:postgresql://localhost:5432/ps_login_it \
+          DB_USERNAME=postgres \
+          DB_PASSWORD=postgres \
+          PS_USER_URL=http://localhost:8083 \
+          INTERNAL_API_KEY="$INTERNAL_API_KEY" \
+          JWT_SECRET_KEY="$JWT_SECRET_KEY" \
+          ACTIVATION_URL=http://activation.invalid/activate \
+          PASSWORD_RESET_URL=http://reset.invalid/reset \
+          MAIL_HOST=127.0.0.1 \
+          MAIL_PORT=2525 \
+          MAIL_USERNAME=unused \
+          MAIL_PASSWORD=unused \
+          MAIL_FROM=no-reply@mypetadmin.test \
+          nohup java -jar target/*.jar > ps-login.log 2>&1 &
+          echo $! > ps-login.pid
+
+      - name: Wait for both services
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://localhost:8083/actuator/health >/dev/null \
+              && curl -fsS http://localhost:8084/actuator/health >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo 'Services did not become healthy'
+          exit 1
+
+      - name: Seed active identity and credential
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d ps_user_it -v ON_ERROR_STOP=1 <<SQL
+          INSERT INTO usuarios (
+            id, empresa_id, onboarding_id, nome, email, status,
+            data_criacao, data_atualizacao, primary_master
+          ) VALUES (
+            '$USER_ID', '$EMPRESA_ID', NULL, 'Master Integration', '$USER_EMAIL', 'ATIVO',
+            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, TRUE
+          );
+          INSERT INTO usuario_roles (usuario_id, role) VALUES ('$USER_ID', 'MASTER');
+          SQL
+
+          BCRYPT_HASH=$(htpasswd -bnBC 10 '' "$USER_PASSWORD" | tr -d ':\n')
+          PASSWORD_HASH="{bcrypt}${BCRYPT_HASH}"
+          psql -h localhost -U postgres -d ps_login_it -v ON_ERROR_STOP=1 \
+            --set=user_id="$USER_ID" \
+            --set=password_hash="$PASSWORD_HASH" <<'SQL'
+          INSERT INTO login_credentials (
+            id, user_id, password_hash, status, activated_at, password_updated_at
+          ) VALUES (
+            '33333333-3333-3333-3333-333333333333', :'user_id', :'password_hash', 'ACTIVE',
+            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+          );
+          SQL
+
+      - name: Validate PS_User identity contract
+        run: |
+          set -euo pipefail
+          RESPONSE=$(curl -fsS \
+            -H "X-Internal-Key: $INTERNAL_API_KEY" \
+            "http://localhost:8083/internal/usuarios/identity?email=$USER_EMAIL")
+          test "$(jq -r '.userId' <<<"$RESPONSE")" = "$USER_ID"
+          test "$(jq -r '.empresaId' <<<"$RESPONSE")" = "$EMPRESA_ID"
+          test "$(jq -r '.status' <<<"$RESPONSE")" = "ATIVO"
+          test "$(jq -r '.roles | index("MASTER") != null' <<<"$RESPONSE")" = "true"
+
+      - name: Validate login, JWT, refresh and logout
+        run: |
+          set -euo pipefail
+
+          LOGIN_RESPONSE=$(curl -fsS -X POST http://localhost:8084/auth/login \
+            -H 'Content-Type: application/json' \
+            -d "{\"email\":\"$USER_EMAIL\",\"password\":\"$USER_PASSWORD\"}")
+
+          ACCESS_TOKEN=$(jq -r '.accessToken' <<<"$LOGIN_RESPONSE")
+          REFRESH_TOKEN=$(jq -r '.refreshToken' <<<"$LOGIN_RESPONSE")
+          test -n "$ACCESS_TOKEN"
+          test -n "$REFRESH_TOKEN"
+          test "$(jq -r '.tokenType' <<<"$LOGIN_RESPONSE")" = "Bearer"
+
+          ACCESS_TOKEN="$ACCESS_TOKEN" USER_ID="$USER_ID" EMPRESA_ID="$EMPRESA_ID" python3 - <<'PY'
+          import base64, json, os
+          token = os.environ['ACCESS_TOKEN']
+          payload = token.split('.')[1]
+          payload += '=' * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+          assert claims['sub'] == os.environ['USER_ID']
+          assert claims['empresaId'] == os.environ['EMPRESA_ID']
+          assert 'MASTER' in claims['roles']
+          assert claims['iss'] == 'ps-login'
+          assert claims.get('jti')
+          PY
+
+          WRONG_PASSWORD_STATUS=$(curl -sS -o /tmp/wrong-password.json -w '%{http_code}' \
+            -X POST http://localhost:8084/auth/login \
+            -H 'Content-Type: application/json' \
+            -d "{\"email\":\"$USER_EMAIL\",\"password\":\"wrong-password\"}")
+          test "$WRONG_PASSWORD_STATUS" = "401"
+
+          REFRESH_RESPONSE=$(curl -fsS -X POST http://localhost:8084/auth/refresh \
+            -H 'Content-Type: application/json' \
+            -d "{\"refreshToken\":\"$REFRESH_TOKEN\"}")
+          ROTATED_REFRESH=$(jq -r '.refreshToken' <<<"$REFRESH_RESPONSE")
+          test -n "$ROTATED_REFRESH"
+          test "$ROTATED_REFRESH" != "$REFRESH_TOKEN"
+
+          LOGOUT_STATUS=$(curl -sS -o /dev/null -w '%{http_code}' \
+            -X POST http://localhost:8084/auth/logout \
+            -H 'Content-Type: application/json' \
+            -d "{\"refreshToken\":\"$ROTATED_REFRESH\"}")
+          test "$LOGOUT_STATUS" = "204"
+
+          REPLAY_STATUS=$(curl -sS -o /tmp/replay.json -w '%{http_code}' \
+            -X POST http://localhost:8084/auth/refresh \
+            -H 'Content-Type: application/json' \
+            -d "{\"refreshToken\":\"$ROTATED_REFRESH\"}")
+          test "$REPLAY_STATUS" = "401"
+
+      - name: Validate inactive user blocks login and refresh
+        run: |
+          set -euo pipefail
+
+          ACTIVE_LOGIN=$(curl -fsS -X POST http://localhost:8084/auth/login \
+            -H 'Content-Type: application/json' \
+            -d "{\"email\":\"$USER_EMAIL\",\"password\":\"$USER_PASSWORD\"}")
+          ACTIVE_REFRESH=$(jq -r '.refreshToken' <<<"$ACTIVE_LOGIN")
+
+          psql -h localhost -U postgres -d ps_user_it -v ON_ERROR_STOP=1 \
+            -c "UPDATE usuarios SET status='INATIVO', data_atualizacao=CURRENT_TIMESTAMP WHERE id='$USER_ID';"
+
+          LOGIN_STATUS=$(curl -sS -o /tmp/inactive-login.json -w '%{http_code}' \
+            -X POST http://localhost:8084/auth/login \
+            -H 'Content-Type: application/json' \
+            -d "{\"email\":\"$USER_EMAIL\",\"password\":\"$USER_PASSWORD\"}")
+          test "$LOGIN_STATUS" = "401"
+
+          REFRESH_STATUS=$(curl -sS -o /tmp/inactive-refresh.json -w '%{http_code}' \
+            -X POST http://localhost:8084/auth/refresh \
+            -H 'Content-Type: application/json' \
+            -d "{\"refreshToken\":\"$ACTIVE_REFRESH\"}")
+          test "$REFRESH_STATUS" = "401"
+
+      - name: Upload integration logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ps-user-login-integration-logs
+          path: |
+            ps-user.log
+            ps-login.log
+          if-no-files-found: ignore
+
+      - name: Stop services
+        if: always()
+        run: |
+          test -f ps-login.pid && kill "$(cat ps-login.pid)" || true
+          test -f ps-user.pid && kill "$(cat ps-user.pid)" || true

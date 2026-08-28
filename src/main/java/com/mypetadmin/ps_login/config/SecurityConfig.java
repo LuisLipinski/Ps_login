@@ -7,6 +7,7 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.crypto.password.Pbkdf2PasswordEncoder;
@@ -44,7 +45,10 @@ public class SecurityConfig {
     @Bean
     PasswordEncoder passwordEncoder() {
         String id = "pbkdf2@SpringSecurity_v5_8";
-        return new DelegatingPasswordEncoder(id, Map.of(id, Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8()));
+        return new DelegatingPasswordEncoder(id, Map.of(
+                id, Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8(),
+                "bcrypt", new BCryptPasswordEncoder()
+        ));
     }
 
     @Bean
