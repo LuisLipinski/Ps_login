@@ -9,5 +9,6 @@ import java.util.UUID;
 
 public interface ActivationTokenRepository extends JpaRepository<ActivationToken, UUID> {
     Optional<ActivationToken> findByTokenHash(String tokenHash);
+    Optional<ActivationToken> findByRequestId(UUID requestId);
     List<ActivationToken> findAllByCredentialIdAndUsedAtIsNullAndRevokedAtIsNull(UUID credentialId);
 }
