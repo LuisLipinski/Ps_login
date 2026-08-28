@@ -1,1 +1,0 @@
-Temporary rollout note: production startup must not require SMTP credentials. Email-dependent flows remain unavailable until provider configuration.
