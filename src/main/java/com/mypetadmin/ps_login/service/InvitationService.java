@@ -32,6 +32,7 @@ public class InvitationService {
     private final ActivationTokenRepository tokenRepository;
     private final TokenCodec tokenCodec;
     private final ActivationMailSender mailSender;
+    private final InvitationLockService invitationLockService;
     private final Clock clock;
     private final Duration tokenTtl;
 
@@ -41,6 +42,7 @@ public class InvitationService {
             ActivationTokenRepository tokenRepository,
             TokenCodec tokenCodec,
             ActivationMailSender mailSender,
+            InvitationLockService invitationLockService,
             Clock clock,
             @Value("${app.activation.ttl:PT24H}") Duration tokenTtl) {
         this.psUserClient = psUserClient;
@@ -48,6 +50,7 @@ public class InvitationService {
         this.tokenRepository = tokenRepository;
         this.tokenCodec = tokenCodec;
         this.mailSender = mailSender;
+        this.invitationLockService = invitationLockService;
         this.clock = clock;
         this.tokenTtl = tokenTtl;
     }
@@ -57,6 +60,15 @@ public class InvitationService {
         String email = request.email().trim().toLowerCase(Locale.ROOT);
         UsuarioIdentityResponseDTO identity = loadIdentity(email);
         validateIdentity(request.userId(), email, identity);
+
+        if (request.requestId() != null) {
+            invitationLockService.lock(request.requestId());
+            ActivationToken replay = tokenRepository.findByRequestId(request.requestId()).orElse(null);
+            if (replay != null) {
+                validateReplay(replay, identity);
+                return;
+            }
+        }
 
         Instant now = clock.instant();
         LoginCredential credential = credentialRepository.findByUserId(identity.userId())
@@ -74,10 +86,11 @@ public class InvitationService {
         ActivationToken token = new ActivationToken(
                 UUID.randomUUID(),
                 credential.getId(),
+                request.requestId(),
                 tokenCodec.hash(rawToken),
                 now.plus(tokenTtl),
                 now);
-        tokenRepository.save(token);
+        tokenRepository.saveAndFlush(token);
         mailSender.sendActivation(identity.email(), rawToken);
     }
 
@@ -95,6 +108,14 @@ public class InvitationService {
         }
         if (!"ATIVO".equals(identity.status())) {
             throw new IdentityValidationException("Usuário inativo não pode receber ativação de credencial.");
+        }
+    }
+
+    private void validateReplay(ActivationToken token, UsuarioIdentityResponseDTO identity) {
+        LoginCredential credential = credentialRepository.findById(token.getCredentialId())
+                .orElseThrow(() -> new IdentityValidationException("Convite idempotente sem credencial correspondente."));
+        if (!credential.getUserId().equals(identity.userId())) {
+            throw new IdentityValidationException("requestId já utilizado para outro usuário.");
         }
     }
 }
