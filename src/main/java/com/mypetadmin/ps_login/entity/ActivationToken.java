@@ -18,6 +18,9 @@ public class ActivationToken {
     @Column(name = "credential_id", nullable = false)
     private UUID credentialId;
 
+    @Column(name = "request_id", unique = true)
+    private UUID requestId;
+
     @Column(name = "token_hash", nullable = false, unique = true, length = 64)
     private String tokenHash;
 
@@ -37,8 +40,18 @@ public class ActivationToken {
     }
 
     public ActivationToken(UUID id, UUID credentialId, String tokenHash, Instant expiresAt, Instant createdAt) {
+        this(id, credentialId, null, tokenHash, expiresAt, createdAt);
+    }
+
+    public ActivationToken(UUID id,
+                           UUID credentialId,
+                           UUID requestId,
+                           String tokenHash,
+                           Instant expiresAt,
+                           Instant createdAt) {
         this.id = id;
         this.credentialId = credentialId;
+        this.requestId = requestId;
         this.tokenHash = tokenHash;
         this.expiresAt = expiresAt;
         this.createdAt = createdAt;
@@ -60,6 +73,7 @@ public class ActivationToken {
 
     public UUID getId() { return id; }
     public UUID getCredentialId() { return credentialId; }
+    public UUID getRequestId() { return requestId; }
     public String getTokenHash() { return tokenHash; }
     public Instant getExpiresAt() { return expiresAt; }
     public Instant getUsedAt() { return usedAt; }
