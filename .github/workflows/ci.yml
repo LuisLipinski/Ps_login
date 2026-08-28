@@ -120,9 +120,8 @@ jobs:
       - name: Build PS_User and PS_Login
         run: |
           set -euo pipefail
-          chmod +x mvnw ps-user/mvnw
-          ./mvnw -B -DskipTests package
-          (cd ps-user && ./mvnw -B -DskipTests package)
+          mvn -B -DskipTests package
+          (cd ps-user && mvn -B -DskipTests package)
 
       - name: Start PS_User
         run: |
