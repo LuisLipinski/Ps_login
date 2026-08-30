@@ -1,10 +1,11 @@
 package com.mypetadmin.ps_login.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 public record ChangePasswordRequest(
-        @NotBlank String currentPassword,
-        @NotBlank String newPassword,
-        @NotBlank String newPasswordConfirmation
+        @NotBlank @Size(max = 1024) String currentPassword,
+        @NotBlank @Size(max = 1024) String newPassword,
+        @NotBlank @Size(max = 1024) String newPasswordConfirmation
 ) {
 }
