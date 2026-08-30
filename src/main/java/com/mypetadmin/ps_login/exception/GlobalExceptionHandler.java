@@ -2,6 +2,8 @@ package com.mypetadmin.ps_login.exception;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -54,6 +56,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ResponseEntity<ErrorResponse> validation(MethodArgumentNotValidException ex) {
         return response(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Dados da requisição inválidos.");
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ResponseEntity<ErrorResponse> malformedJson(HttpMessageNotReadableException ex) {
+        return response(HttpStatus.BAD_REQUEST, "MALFORMED_JSON", "JSON da requisição inválido.");
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    ResponseEntity<ErrorResponse> unsupportedMediaType(HttpMediaTypeNotSupportedException ex) {
+        return response(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "UNSUPPORTED_MEDIA_TYPE", "Content-Type não suportado.");
     }
 
     private ResponseEntity<ErrorResponse> response(HttpStatus status, String code, String message) {
