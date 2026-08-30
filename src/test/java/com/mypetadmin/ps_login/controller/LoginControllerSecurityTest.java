@@ -15,9 +15,11 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
@@ -57,5 +59,19 @@ class LoginControllerSecurityTest {
                         .content("{\"email\":\"email-invalido\",\"password\":\"\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void camposExcessivamenteGrandesSaoBloqueadosAntesDoServico() throws Exception {
+        String oversizedPassword = "a".repeat(1025);
+        String payload = "{\"email\":\"user@example.com\",\"password\":\"" + oversizedPassword + "\"}";
+
+        mockMvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        verify(loginService, never()).login(any());
     }
 }
