@@ -51,6 +51,20 @@ class LoginControllerSecurityTest {
     }
 
     @Test
+    void erroInesperadoNaoVazaDetalhesInternos() throws Exception {
+        when(loginService.login(any())).thenThrow(new IllegalStateException("jdbc:postgresql://db.internal:5432/secret"));
+
+        mockMvc.perform(post("/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"email\":\"user@example.com\",\"password\":\"SenhaValida123!\"}"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
+                .andExpect(jsonPath("$.message").value("Erro interno."))
+                .andExpect(content().string(not(containsString("jdbc:postgresql"))))
+                .andExpect(content().string(not(containsString("IllegalStateException"))));
+    }
+
+    @Test
     void payloadInvalidoNaoEhConfundidoComFalhaDeCredencial() throws Exception {
         mockMvc.perform(post("/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

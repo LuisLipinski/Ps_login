@@ -9,9 +9,13 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.Instant;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger LOGGER = Logger.getLogger(GlobalExceptionHandler.class.getName());
 
     @ExceptionHandler(InvalidCredentialsException.class)
     ResponseEntity<ErrorResponse> invalidCredentials(InvalidCredentialsException ex) {
@@ -66,6 +70,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
     ResponseEntity<ErrorResponse> unsupportedMediaType(HttpMediaTypeNotSupportedException ex) {
         return response(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "UNSUPPORTED_MEDIA_TYPE", "Content-Type não suportado.");
+    }
+
+    @ExceptionHandler(Exception.class)
+    ResponseEntity<ErrorResponse> unexpected(Exception ex) {
+        LOGGER.log(Level.SEVERE, "request.unexpected_error", ex);
+        return response(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Erro interno.");
     }
 
     private ResponseEntity<ErrorResponse> response(HttpStatus status, String code, String message) {
