@@ -1,5 +1,6 @@
 package com.mypetadmin.ps_login.exception;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.time.Instant;
 
 @RestControllerAdvice
+@Slf4j
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(InvalidCredentialsException.class)
@@ -66,6 +68,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
     ResponseEntity<ErrorResponse> unsupportedMediaType(HttpMediaTypeNotSupportedException ex) {
         return response(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "UNSUPPORTED_MEDIA_TYPE", "Content-Type não suportado.");
+    }
+
+    @ExceptionHandler(Exception.class)
+    ResponseEntity<ErrorResponse> unexpected(Exception ex) {
+        log.error("request.unexpected_error", ex);
+        return response(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Erro interno.");
     }
 
     private ResponseEntity<ErrorResponse> response(HttpStatus status, String code, String message) {
